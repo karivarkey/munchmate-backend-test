@@ -9,8 +9,8 @@ app.use(express.json());
 app.use(bodyParser.json());
 
 // Mongoose models for Menu Items and Orders
-const MenuItem = require("./models/MenuItem");
-const Order = require("./models/Order");
+const MenuItem = require("../models/MenuItem");
+const Order = require("../models/Order");
 
 app.get("/", (req, res) => res.send("MunchMate backend works"));
 
@@ -136,10 +136,12 @@ mongoose
   .connect(URI)
   .then(() => {
     console.log("Connected to database!");
-    app.listen(5000, () => {
-      console.log("Server running on port 5000");
+    app.listen(process.env.PORT || 8080, () => {
+      console.log(`Server running on port ${process.env.PORT || 8080}`);
     });
   })
   .catch((error) => {
     console.error("Database connection failed:", error);
   });
+
+module.exports = app;
