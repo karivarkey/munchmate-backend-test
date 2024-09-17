@@ -4,6 +4,20 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 require("dotenv").config();
 const app = express();
+const redis = require("redis");
+
+const redisClient = redis.createClient({
+  url: process.env.REDIS_URL || "redis://localhost:6379",
+});
+redisClient.connect();
+
+redisClient.on("connect", () => {
+  console.log("Connected to Redis!");
+});
+redisClient.on("error", (err) => {
+  console.error("Redis error: ", err);
+});
+
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());
@@ -18,15 +32,16 @@ app.get("/", (req, res) => res.send("MunchMate backend works"));
 app.post("/menu/add", async (req, res) => {
   try {
     const { name, price, category } = req.body;
-    console.log(name, price, category);
-    const newItem = new MenuItem({ name, price, category });
-    console.log(newItem);
-    await newItem.save();
+    const newItem = { name, price, category };
+
+    // Store the new item in Redis using an incrementing ID
+    const itemId = await redisClient.incr("menuItemId");
+    await redisClient.hSet(`menuItem:${itemId}`, newItem);
 
     res.status(200).json({
       success: true,
       message: "Menu item added successfully.",
-      item: newItem,
+      item: { id: itemId, ...newItem },
     });
   } catch (error) {
     console.error(error);
@@ -40,7 +55,15 @@ app.post("/menu/add", async (req, res) => {
 // Get all menu items
 app.get("/menu", async (req, res) => {
   try {
-    const menuItems = await MenuItem.find();
+    const keys = await redisClient.keys("menuItem:*");
+    const menuItems = [];
+
+    for (const key of keys) {
+      const item = await redisClient.hGetAll(key);
+      item.id = key.split(":")[1]; // Extract the ID from the key
+      menuItems.push(item);
+    }
+
     res.status(200).json({ success: true, items: menuItems });
   } catch (error) {
     console.error(error);
@@ -54,18 +77,20 @@ app.get("/menu", async (req, res) => {
 app.delete("/menu/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedItem = await MenuItem.findByIdAndDelete(id);
+    const deletedItemKey = `menuItem:${id}`;
+    const exists = await redisClient.exists(deletedItemKey);
 
-    if (!deletedItem) {
+    if (!exists) {
       return res
         .status(404)
         .json({ success: false, message: "Menu item not found." });
     }
 
+    await redisClient.del(deletedItemKey);
+
     res.status(200).json({
       success: true,
       message: "Menu item removed successfully.",
-      item: deletedItem,
     });
   } catch (error) {
     console.error(error);
